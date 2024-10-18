@@ -1,11 +1,35 @@
 import { defineNuxtRouteMiddleware, navigateTo } from "nuxt/app";
 
+type PunctualDoNotRedirects = {
+  [key: string]: boolean;
+};
+type RegexRedirect = {
+    "code": number,
+    "from": string,
+    "to": string
+};
+type RegexRedirects = {
+  [key: string]: RegexRedirects | RegexRedirect[]
+};
+type PunctualRedirect = {
+  "query": string[],
+  "code": number,
+  "to": string
+}
+type PunctualRedirects = {
+  [key: string]: PunctualRedirect[]
+};
+
 export default defineNuxtRouteMiddleware(async (to, _) => {
   if (to.fullPath.includes("robots.txt")) return
   const getTypedRedirects = (redirects: any) =>
-    redirects as Array<{ code: number; from: string; to: string }>;
-  const isRegex = (s: string) => s.startsWith("^") && s.endsWith("$");
-
+    redirects as {
+      punctualRedirects: PunctualRedirects,
+      regexRedirects: RegexRedirects,
+      punctualDoNotRedirect: PunctualDoNotRedirects,
+      regexDoNotRedirect: string[]
+    };
+ 
   // if redirection is only server side, skip redirection entirely, else load redirection rules
   let redirects: typeof import("./redirects")["redirects"] | null = null
   if (!<% print(options.alwaysRedirect) %> && !process.server) {
@@ -18,15 +42,6 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
   // divide redirection rules in punctual redirects and regex redirection rules
   const typedRedirects = getTypedRedirects(redirects);
 
-
-  const punctualRedirects = typedRedirects.filter(
-    (redirectionRule) => !isRegex(redirectionRule.from)
-  );
-
-  const regexRedirects = typedRedirects.filter((redirectionRule) =>
-    isRegex(redirectionRule.from)
-  );
-
   const hasTrailingSlash = (path: string) => path.endsWith("/")
   const removeTrailingSlash = (path: string) => hasTrailingSlash(path) ? path.slice(0, -1) : path
   const addTrailingSlash = (path: string) => {
@@ -35,7 +50,6 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
         return path + "/"
       }
     }
-
     return path
   }
   const getQueriesFromPath = (path: string) => {
@@ -55,6 +69,26 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
     return path.split("?")?.[1] ?? ''
   }
 
+  const findRegexRedirect : (path: string, regexRedirects: RegexRedirects) => RegexRedirect | undefined =  (path: string, regexRedirects: RegexRedirects) => {
+    let matchingRedirect : RegexRedirect | undefined;
+    for(const key of Object.keys(regexRedirects).filter(k => k != 'root')){
+      const regex = new RegExp(key);
+      if(regex.test(path)) {
+        matchingRedirect = findRegexRedirect(path, regexRedirects[key] as RegexRedirects)
+      }
+    }
+    if(!matchingRedirect && regexRedirects["root"]){
+      for(const regexRedirect of (regexRedirects["root"] as RegexRedirect[]).reverse()){
+        const regex = new RegExp(regexRedirect.from);
+        if (regex.test(path)) {
+          matchingRedirect = regexRedirect;
+          break;
+        }
+      }
+    }
+    return matchingRedirect;
+  }
+
   // redirection only happens server side
   if (process.server || <% print(options.alwaysRedirect) %>) {
     // removing = and trailingSlash, ignore query
@@ -64,32 +98,34 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
 
     const query = getQuery(path)
     const urlPath = getUrl(path)
+    const queryArray = query ? query.split("&") : [];
 
-    if (to.fullPath !== "/") {
-      // handling punctual redirects
-      const punctualRedirection = punctualRedirects.find(
-        (r) => {
-        const from = r.from
-        const fromPath = getUrl(from)
-        const fromQuery = getQuery(from)
-          if (fromQuery !== '') {
-            // check validity of pathQuery
-            const qArr = query.split("&")
-            const fromQArr = fromQuery.split("&")
-
-            const queryValidated = fromQArr.every(q => qArr.includes(q))
-
-            return queryValidated && removeTrailingSlash(fromPath) === urlPath
+    if (to.fullPath !== "/") {  
+      // Checking if path is on blacklist (punctual or regex)  
+      if(Object.hasOwn(typedRedirects.punctualDoNotRedirect, urlPath)){
+        return;
+      }else if(typedRedirects.regexDoNotRedirect){
+        typedRedirects.regexDoNotRedirect.forEach((r) => {
+          const regex = new RegExp(r);
+          if (regex.test(path)) {
+            return;
           }
-          return removeTrailingSlash(fromPath) === urlPath
+        });
+      }
+
+      let punctualRedirection : PunctualRedirect | undefined;
+      const tentativePunctualRedirections = typedRedirects.punctualRedirects[urlPath] ?? [];
+      for(const tentativePunctualRedirection of tentativePunctualRedirections){
+        if(tentativePunctualRedirection.query.every(q => queryArray.includes(q))){
+          punctualRedirection = tentativePunctualRedirection
         }
-      );
+      }
 
       if (typeof punctualRedirection !== "undefined") {
         // join request and redirection queries
         const queryParams = [
           ...getQueriesFromPath(to.fullPath),
-          ...getQueriesFromPath(punctualRedirection.to)
+          ...punctualRedirection.query
         ]
         const uri = joinQueriesAndPath(addTrailingSlash(punctualRedirection.to), queryParams)
         return navigateTo(uri, {
@@ -98,30 +134,24 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
         });
       }
       // punctual redirects had the priority, now we look for any regex redirections
-      let regexRedirection: { code: number, path: string } | undefined
-      regexRedirects.forEach((r) => {
-        const regex = new RegExp(r.from);
-        if (regex.test(path)) {
-          const toPath = addTrailingSlash(urlPath.replace(regex, r.to));
-          regexRedirection = { code: r.code, path: toPath }
-        }
-      });
-
-      if (typeof regexRedirection !== 'undefined') {
-        // join request and redirection queries
+      let regexRedirection = findRegexRedirect(path, typedRedirects.regexRedirects);
+      if(regexRedirection){
+        const regex = new RegExp(regexRedirection.from);
+        const toPath = addTrailingSlash(urlPath.replace(regex, regexRedirection.to));
+        
         const queryParams = [
           ...getQueriesFromPath(to.fullPath),
-          ...getQueriesFromPath(regexRedirection.path)
+          ...getQueriesFromPath(toPath)
         ]
-        const uri = joinQueriesAndPath(addTrailingSlash(regexRedirection.path), queryParams)
+
+        const uri = joinQueriesAndPath(addTrailingSlash(toPath), queryParams)
 
         return navigateTo(uri, {
           redirectCode: regexRedirection.code,
           external: true,
         });
       }
-
-
+     
       // trailing-slash
       if (<% print(options.trailingSlash) %>) {
         const originalSplittedPath = to.fullPath.split("?")

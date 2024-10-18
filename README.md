@@ -1,4 +1,4 @@
-# @atoms-studio/nuxt-redirects
+# @hippocrates-holding/nuxt-redirects
 
 [![npm version][npm-version-src]][npm-version-href]
 [![npm downloads][npm-downloads-src]][npm-downloads-href]
@@ -10,24 +10,24 @@ under the hood for validation, handling both punctual and regex redirects. An ex
 
 ## Quick Setup
 
-1. Add the `@atoms-studio/nuxt-redirects` dependency to your project.
+1. Add the `@hippocrates-holding/nuxt-redirects` dependency to your project.
 
 ```bash
 # Using pnpm
-pnpm add -D @atoms-studio/nuxt-redirects
+pnpm add -D @hippocrates-holding/nuxt-redirects
 
 # Using yarn
-yarn add --dev @atoms-studio/nuxt-redirects
+yarn add --dev @hippocrates-holding/nuxt-redirects
 
 # Using npm
-npm install --save-dev @atoms-studio/nuxt-redirects
+npm install --save-dev @hippocrates-holding/nuxt-redirects
 ```
 
-2. Add `@atoms-studio/nuxt-redirects` to the `modules` section of your `nuxt.config.ts` file.
+2. Add `@hippocrates-holding/nuxt-redirects` to the `modules` section of your `nuxt.config.ts` file.
 
 ```js
 export default defineNuxtConfig({
-  modules: ["@atoms-studio/nuxt-redirects"],
+  modules: ["@hippocrates-holding/nuxt-redirects"],
 });
 ```
 
@@ -63,11 +63,11 @@ npm run release
 
 Licensed under the [MIT License](LICENSE).
 
-[npm-version-src]: https://img.shields.io/npm/v/@atoms-studio/nuxt-redirects/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
-[npm-version-href]: https://npmjs.com/package/@atoms-studio/nuxt-redirects
-[npm-downloads-src]: https://img.shields.io/npm/dm/@atoms-studio/nuxt-redirects.svg?style=flat&colorA=18181B&colorB=28CF8D
-[npm-downloads-href]: https://npmjs.com/package/@atoms-studio/nuxt-redirects
-[license-src]: https://img.shields.io/npm/l/@atoms-studio/nuxt-redirects.svg?style=flat&colorA=18181B&colorB=28CF8D
-[license-href]: https://npmjs.com/package/@atoms-studio/nuxt-redirects
+[npm-version-src]: https://img.shields.io/npm/v/@hippocrates-holding/nuxt-redirects/latest.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-version-href]: https://npmjs.com/package/@hippocrates-holding/nuxt-redirects
+[npm-downloads-src]: https://img.shields.io/npm/dm/@hippocrates-holding/nuxt-redirects.svg?style=flat&colorA=18181B&colorB=28CF8D
+[npm-downloads-href]: https://npmjs.com/package/@hippocrates-holding/nuxt-redirects
+[license-src]: https://img.shields.io/npm/l/@hippocrates-holding/nuxt-redirects.svg?style=flat&colorA=18181B&colorB=28CF8D
+[license-href]: https://npmjs.com/package/@hippocrates-holding/nuxt-redirects
 [nuxt-src]: https://img.shields.io/badge/Nuxt-18181B?logo=nuxt.js
 [nuxt-href]: https://nuxt.com
