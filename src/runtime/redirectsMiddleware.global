@@ -1,15 +1,28 @@
 import { defineNuxtRouteMiddleware, navigateTo } from "nuxt/app";
 
+type TypedRedirects = {
+  punctualRedirects: PunctualRedirects,
+  regexRedirects: RegexRedirects,
+  punctualDoNotRedirect: PunctualDoNotRedirects,
+  regexDoNotRedirect: string[]
+}
 type PunctualDoNotRedirects = {
   [key: string]: boolean;
 };
+type RegexRedirectContainer = {
+  regex: string,
+  compiled_regex?: RegExp,
+  children: RegexRedirects,
+  redirects: RegexRedirect[]
+ }
 type RegexRedirect = {
-    "code": number,
-    "from": string,
-    "to": string
+    code: number,
+    from: string,
+    from_regex?: RegExp,
+    to: string
 };
 type RegexRedirects = {
-  [key: string]: RegexRedirects | RegexRedirect[]
+  [key: string]: RegexRedirectContainer
 };
 type PunctualRedirect = {
   "query": string[],
@@ -18,30 +31,61 @@ type PunctualRedirect = {
 }
 type PunctualRedirects = {
   [key: string]: PunctualRedirect[]
-};
+};    
+
+let typedRedirects : TypedRedirects | undefined;
 
 export default defineNuxtRouteMiddleware(async (to, _) => {
-  if (to.fullPath.includes("robots.txt")) return
-  const getTypedRedirects = (redirects: any) =>
-    redirects as {
-      punctualRedirects: PunctualRedirects,
-      regexRedirects: RegexRedirects,
-      punctualDoNotRedirect: PunctualDoNotRedirects,
-      regexDoNotRedirect: string[]
-    };
+  console.time("redirect_end-to-end");
+  if (to.fullPath.includes("robots.txt")) {
+    console.timeEnd("redirect_end-to-end");
+    return
+  }
+  
+  const getTypedRedirects = (redirects: any) => redirects as TypedRedirects;
+  const _compileRegex = (regexRedirects: RegexRedirectContainer) => {
+    if(regexRedirects.regex){
+      regexRedirects.compiled_regex = new RegExp(regexRedirects.regex);
+    }
+    for(let regexRedirect of regexRedirects?.redirects ?? []){
+      regexRedirect.from_regex = new RegExp(regexRedirect.from);
+    }
+    if(regexRedirects?.children){
+      for(let childKey of Object.keys(regexRedirects.children)){
+        let child = redirects.regexRedirects[childKey];
+        redirects.regexRedirects[childKey] = _compileRegex(child);
+      }
+    }
+    return regexRedirects;
+  }
+  const compileRedirects = (redirects: TypedRedirects) => {
+    for(let childKey of Object.keys(redirects.regexRedirects)){
+      let child = redirects.regexRedirects[childKey];
+      redirects.regexRedirects[childKey] = _compileRegex(child);
+    }
+    return redirects;
+  }
  
   // if redirection is only server side, skip redirection entirely, else load redirection rules
-  let redirects: typeof import("./redirects")["redirects"] | null = null
+  let redirects: any;
   if (!<% print(options.alwaysRedirect) %> && !process.server) {
+    console.timeEnd("redirect_end-to-end");
     return
-  } else {
+  } else if(!typedRedirects) {  
+    console.time("redirect_get-redirects");
     const { redirects: r } = await import("./redirects")
+    console.timeEnd("redirect_get-redirects");
     redirects = r
+    console.time("redirect_get-typed-redirects");
+    // divide redirection rules in punctual redirects and regex redirection rules
+    typedRedirects = getTypedRedirects(redirects);
+    console.timeEnd("redirect_get-typed-redirects")
+    console.time("redirect_compile-redirects");
+    typedRedirects = compileRedirects(typedRedirects);
+    console.timeEnd("redirect_compile-redirects")
+
   }
-
-  // divide redirection rules in punctual redirects and regex redirection rules
-  const typedRedirects = getTypedRedirects(redirects);
-
+  
   const hasTrailingSlash = (path: string) => path.endsWith("/")
   const removeTrailingSlash = (path: string) => hasTrailingSlash(path) ? path.slice(0, -1) : path
   const addTrailingSlash = (path: string) => {
@@ -71,20 +115,23 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
 
   const findRegexRedirect : (path: string, regexRedirects: RegexRedirects) => RegexRedirect | undefined =  (path: string, regexRedirects: RegexRedirects) => {
     let matchingRedirect : RegexRedirect | undefined;
-    for(const key of Object.keys(regexRedirects).filter(k => k != 'root')){
-      const regex = new RegExp(key);
-      if(regex.test(path)) {
-        matchingRedirect = findRegexRedirect(path, regexRedirects[key] as RegexRedirects)
-      }
-    }
-    if(!matchingRedirect && regexRedirects["root"]){
-      for(const regexRedirect of (regexRedirects["root"] as RegexRedirect[]).reverse()){
-        const regex = new RegExp(regexRedirect.from);
-        if (regex.test(path)) {
-          matchingRedirect = regexRedirect;
-          break;
+    try{
+      for(const key of Object.keys(regexRedirects).filter(k => k != 'root')){
+        const child = regexRedirects[key];
+        if(child?.compiled_regex?.test(path) && child.children) {
+          matchingRedirect = findRegexRedirect(path, child.children)
         }
       }
+      if(!matchingRedirect && regexRedirects["root"]){
+        for(const regexRedirect of regexRedirects["root"].redirects.reverse()){
+          if (regexRedirect?.from_regex?.test(path)) {
+            matchingRedirect = regexRedirect;
+            break;
+          }
+        }
+      }
+    }catch(err){
+      console.log(err);
     }
     return matchingRedirect;
   }
@@ -101,6 +148,7 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
     const queryArray = query ? query.split("&") : [];
 
     if (to.fullPath !== "/") {  
+      console.time("redirect_check-blacklist");
       // Checking if path is on blacklist (punctual or regex)  
       if(Object.hasOwn(typedRedirects.punctualDoNotRedirect, urlPath)){
         return;
@@ -112,7 +160,9 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
           }
         });
       }
+      console.timeEnd("redirect_check-blacklist");
 
+      console.time("redirect_punctual-redirect-search");
       let punctualRedirection : PunctualRedirect | undefined;
       const tentativePunctualRedirections = typedRedirects.punctualRedirects[urlPath] ?? [];
       for(const tentativePunctualRedirection of tentativePunctualRedirections){
@@ -120,6 +170,7 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
           punctualRedirection = tentativePunctualRedirection
         }
       }
+      console.timeEnd("redirect_punctual-redirect-search");
 
       if (typeof punctualRedirection !== "undefined") {
         // join request and redirection queries
@@ -127,14 +178,19 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
           ...getQueriesFromPath(to.fullPath),
           ...punctualRedirection.query
         ]
-        const uri = joinQueriesAndPath(addTrailingSlash(punctualRedirection.to), queryParams)
+        const uri = joinQueriesAndPath(addTrailingSlash(punctualRedirection.to), queryParams) 
+        console.timeEnd("redirect_end-to-end");
         return navigateTo(uri, {
           redirectCode: punctualRedirection.code,
           external: true,
         });
       }
       // punctual redirects had the priority, now we look for any regex redirections
+      
+      console.time("redirect_regex-redirect-search");
       let regexRedirection = findRegexRedirect(path, typedRedirects.regexRedirects);
+      console.timeEnd("redirect_regex-redirect-search");
+
       if(regexRedirection){
         const regex = new RegExp(regexRedirection.from);
         const toPath = addTrailingSlash(urlPath.replace(regex, regexRedirection.to));
@@ -145,7 +201,7 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
         ]
 
         const uri = joinQueriesAndPath(addTrailingSlash(toPath), queryParams)
-
+        console.timeEnd("redirect_end-to-end");
         return navigateTo(uri, {
           redirectCode: regexRedirection.code,
           external: true,
@@ -159,6 +215,7 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
 
         if (!hasTrailingSlash(originalPath)) {
           originalSplittedPath[0] = addTrailingSlash(originalPath)
+          console.timeEnd("redirect_end-to-end");
           return navigateTo(originalSplittedPath.join("?"), {
             redirectCode: 301,
             external: true
@@ -167,5 +224,6 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
       }
     }
   }
+  console.timeEnd("redirect_end-to-end");
 });
 

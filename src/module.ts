@@ -54,34 +54,44 @@ export default defineNuxtModule<ModuleOptions>({
     );
     const parsedCsv = parseCSVContent(csv, redirectsSchema);
 
-    type PunctualDoNotRedirects = {
-      [key: string]: boolean;
-    };
-    type RegexRedirect = {
-        "code": number,
-        "from": string,
-        "to": string
-    };
-    type RegexRedirects = {
-      [key: string]: RegexRedirects | RegexRedirect[]
-    };
-    type PunctualRedirect = {
-      "query": string[],
-      "code": number,
-      "to": string
-    }
-    type PunctualRedirects = {
-      [key: string]: PunctualRedirect[]
-    };
-
-    const redirects : {
+    type TypedRedirects = {
       punctualRedirects: PunctualRedirects,
       regexRedirects: RegexRedirects,
       punctualDoNotRedirect: PunctualDoNotRedirects,
       regexDoNotRedirect: string[]
-    } = {
+    }
+    type PunctualDoNotRedirects = {
+      [key: string]: boolean;
+    };
+    type RegexRedirectContainer = {
+      regex: string,
+      children: RegexRedirects,
+      redirects: RegexRedirect[]
+     }
+    type RegexRedirect = {
+        code: number,
+        from: string,
+        to: string
+    };
+    type RegexRedirects = {
+      [key: string]: RegexRedirectContainer
+    };
+    type PunctualRedirect = {
+      query: string[],
+      code: number,
+      to: string
+    }
+    type PunctualRedirects = {
+      [key: string]: PunctualRedirect[]
+    };    
+    
+    const redirects : TypedRedirects = {
       punctualRedirects: {},
-      regexRedirects: {},
+      regexRedirects: {"root": {
+        regex: "^.*$",
+        children: {},
+        redirects: []
+      }},
       punctualDoNotRedirect: {},
       regexDoNotRedirect: []
     }
@@ -104,21 +114,37 @@ export default defineNuxtModule<ModuleOptions>({
 
     for(const redirectRow of parsedCsv.validRows){
       const isRegex = redirectRow.from.startsWith("^") && redirectRow.from.endsWith("$");
-      let currentNode = isRegex ? redirects.regexRedirects : redirects.punctualRedirects;
+      let currentNode : RegexRedirectContainer | PunctualRedirects | undefined;
       if(isRegex && redirectRow.parents){
         const parents = redirectRow.parents.split(options.parentRegexSplitSequence)
         for(const parent of parents.filter(parent => parent.startsWith("^") && parent.endsWith("$"))){
-          if(!Object.hasOwn(currentNode, parent)){
-            currentNode[parent] = {}
+          if(!currentNode){
+            if(!redirects.regexRedirects[parent]){
+              redirects.regexRedirects[parent] = {
+                regex: parent,
+                redirects: [],
+                children: {}
+              }
+            }
+            currentNode = redirects.regexRedirects[parent];
+          }else if(!Object.hasOwn(currentNode.children, parent)){
+            (currentNode.children as RegexRedirects)[parent] = {
+              regex: parent,
+              redirects: [],
+              children: {}
+            }
+            currentNode = (currentNode.children as RegexRedirects)[parent] ;
+          }else{
+            currentNode =  (currentNode.children as RegexRedirects)[parent]
           }
-          currentNode = currentNode[parent] as RegexRedirects;
         }
+      }else if(isRegex){
+        currentNode = redirects.regexRedirects["root"];
+      }else{
+        currentNode = redirects.punctualRedirects;
       }
       if(isRegex){
-        if(!Object.hasOwn(currentNode, "root")){
-          currentNode['root'] = [] as RegexRedirect[];
-        }
-        (currentNode['root'] as RegexRedirect[]).push({
+        (currentNode as RegexRedirectContainer).redirects.push({
           code: redirectRow.code,
           from: redirectRow.from,
           to: redirectRow.to
