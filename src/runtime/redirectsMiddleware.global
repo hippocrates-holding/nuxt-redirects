@@ -52,18 +52,26 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
     }
     if(regexRedirects?.children){
       for(let childKey of Object.keys(regexRedirects.children)){
-        let child = redirects.regexRedirects[childKey];
-        redirects.regexRedirects[childKey] = _compileRegex(child);
+        let child = regexRedirects.children[childKey];
+        if(child){
+          regexRedirects.children[childKey] = _compileRegex(child);
+        }
       }
     }
     return regexRedirects;
   }
   const compileRedirects = (redirects: TypedRedirects) => {
-    for(let childKey of Object.keys(redirects.regexRedirects)){
-      let child = redirects.regexRedirects[childKey];
-      redirects.regexRedirects[childKey] = _compileRegex(child);
+    try{
+      for(let childKey of Object.keys(redirects.regexRedirects)){
+        let child = redirects.regexRedirects[childKey];
+        if(child){
+          redirects.regexRedirects[childKey] = _compileRegex(child);
+        }
+      }
+      return redirects;
+    }catch(err){
+      console.error(err);
     }
-    return redirects;
   }
  
   // if redirection is only server side, skip redirection entirely, else load redirection rules
@@ -118,8 +126,21 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
     try{
       for(const key of Object.keys(regexRedirects).filter(k => k != 'root')){
         const child = regexRedirects[key];
-        if(child?.compiled_regex?.test(path) && child.children) {
-          matchingRedirect = findRegexRedirect(path, child.children)
+        if(child?.compiled_regex?.test(path)) {
+          if(child?.children && Object.keys(child.children).length > 0){
+            matchingRedirect = findRegexRedirect(path, child.children)
+          }
+          if(!matchingRedirect && child?.redirects?.length > 0){
+            for(const regexRedirect of child.redirects.reverse()){
+              if (regexRedirect?.from_regex?.test(path)) {
+                matchingRedirect = regexRedirect;
+                break;
+              }
+            }
+          }
+          if(matchingRedirect){
+            break;
+          }
         }
       }
       if(!matchingRedirect && regexRedirects["root"]){
