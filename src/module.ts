@@ -112,6 +112,9 @@ export default defineNuxtModule<ModuleOptions>({
       return path.split("?")?.[1] ?? ''
     }
 
+    const hasTrailingSlash = (path: string) => path.endsWith("/")
+    const removeTrailingSlash = (path: string) => hasTrailingSlash(path) ? path.slice(0, -1) : path
+  
     for(const redirectRow of parsedCsv.validRows){
       const isRegex = redirectRow.from.startsWith("^") && redirectRow.from.endsWith("$");
       let currentNode : RegexRedirectContainer | PunctualRedirects | undefined;
@@ -150,7 +153,7 @@ export default defineNuxtModule<ModuleOptions>({
           to: redirectRow.to
         })
       }else{
-        const path = getUrl(redirectRow.from)
+        const path = removeTrailingSlash(getUrl(redirectRow.from))
         const query = getQuery(redirectRow.from)
         const queryArray = query ? query.split("&") : [];
         (currentNode as PunctualRedirects)[path] = [
