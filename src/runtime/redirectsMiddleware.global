@@ -131,7 +131,8 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
             matchingRedirect = findRegexRedirect(path, child.children)
           }
           if(!matchingRedirect && child?.redirects?.length > 0){
-            for(const regexRedirect of child.redirects.reverse()){
+            for(let index = child.redirects.length - 1; index > 0; index--){
+              const regexRedirect = child.redirects[index];
               if (regexRedirect?.from_regex?.test(path)) {
                 matchingRedirect = regexRedirect;
                 break;
@@ -143,8 +144,9 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
           }
         }
       }
-      if(!matchingRedirect && regexRedirects["root"]){
-        for(const regexRedirect of regexRedirects["root"].redirects.reverse()){
+      if(!matchingRedirect && (regexRedirects["root"]?.redirects?.length ?? 0) > 0){
+        for(let index = regexRedirects["root"].redirects.length - 1; index > 0; index--){
+          const regexRedirect = regexRedirects["root"].redirects[index];
           if (regexRedirect?.from_regex?.test(path)) {
             matchingRedirect = regexRedirect;
             break;
