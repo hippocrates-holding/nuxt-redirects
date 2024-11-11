@@ -197,10 +197,10 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
 
       if (typeof punctualRedirection !== "undefined") {
         // join request and redirection queries
-        const queryParams = [
+        const queryParams = [...new Set([
           ...getQueriesFromPath(to.fullPath),
           ...punctualRedirection.query
-        ]
+        ])]
         const uri = joinQueriesAndPath(addTrailingSlash(punctualRedirection.to), queryParams) 
         console.timeEnd("redirect_end-to-end");
         return navigateTo(uri, {
@@ -218,10 +218,10 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
         const regex = new RegExp(regexRedirection.from);
         const toPath = addTrailingSlash(urlPath.replace(regex, regexRedirection.to));
         
-        const queryParams = [
+        const queryParams = [...new Set([
           ...getQueriesFromPath(to.fullPath),
           ...getQueriesFromPath(toPath)
-        ]
+        ])]
 
         const uri = joinQueriesAndPath(addTrailingSlash(toPath), queryParams)
         console.timeEnd("redirect_end-to-end");
