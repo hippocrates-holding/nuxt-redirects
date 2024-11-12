@@ -187,10 +187,12 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
 
       console.time("redirect_punctual-redirect-search");
       let punctualRedirection : PunctualRedirect | undefined;
-      const tentativePunctualRedirections = typedRedirects.punctualRedirects[urlPath] ?? [];
+      let tentativePunctualRedirections = typedRedirects.punctualRedirects[urlPath] ?? [];
+      tentativePunctualRedirections = tentativePunctualRedirections.sort((a,b) => b.query.length - a.query.length);
       for(const tentativePunctualRedirection of tentativePunctualRedirections){
         if(tentativePunctualRedirection.query.every(q => queryArray.includes(q))){
-          punctualRedirection = tentativePunctualRedirection
+          punctualRedirection = tentativePunctualRedirection;
+          break;
         }
       }
       console.timeEnd("redirect_punctual-redirect-search");
