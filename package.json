@@ -1,6 +1,6 @@
 {
   "name": "@hippocrates-holding/nuxt-redirects",
-  "version": "1.3.6",
+  "version": "1.3.13",
   "description": "Massive redirect rules module handler",
   "repository": "@hippocrates-holding/nuxt-redirects",
   "private": false,

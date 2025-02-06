@@ -1,5 +1,11 @@
 import { defineNuxtRouteMiddleware, navigateTo } from "nuxt/app";
 
+export type RedirectSpecification = {
+  uri: string,
+  redirectCode: 301|302|307|308,
+  external: boolean
+}
+
 type TypedRedirects = {
   punctualRedirects: PunctualRedirects,
   regexRedirects: RegexRedirects,
@@ -16,7 +22,7 @@ type RegexRedirectContainer = {
   redirects: RegexRedirect[]
  }
 type RegexRedirect = {
-    code: number,
+    code: 301|302|307|308,
     from: string,
     from_regex?: RegExp,
     to: string
@@ -26,7 +32,7 @@ type RegexRedirects = {
 };
 type PunctualRedirect = {
   "query": string[],
-  "code": number,
+  "code": 301|302|307|308,
   "to": string
 }
 type PunctualRedirects = {
@@ -35,11 +41,10 @@ type PunctualRedirects = {
 
 let typedRedirects : TypedRedirects | undefined;
 
-export default defineNuxtRouteMiddleware(async (to, _) => {
-  console.time("redirect_end-to-end");
-  if (to.fullPath.includes("robots.txt")) {
-    console.timeEnd("redirect_end-to-end");
-    return
+export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecification | null | undefined> = async (fullPathTo: string) => {
+  if (fullPathTo.includes("robots.txt")) {
+    //console.timeEnd("redirect_end-to-end");
+    return null
   }
   
   const getTypedRedirects = (redirects: any) => redirects as TypedRedirects;
@@ -77,20 +82,20 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
   // if redirection is only server side, skip redirection entirely, else load redirection rules
   let redirects: any;
   if (!<% print(options.alwaysRedirect) %> && !process.server) {
-    console.timeEnd("redirect_end-to-end");
+    //console.timeEnd("redirect_end-to-end");
     return
   } else if(!typedRedirects) {  
-    console.time("redirect_get-redirects");
+    //console.time("redirect_get-redirects");
     const { redirects: r } = await import("./redirects")
-    console.timeEnd("redirect_get-redirects");
+    //console.timeEnd("redirect_get-redirects");
     redirects = r
-    console.time("redirect_get-typed-redirects");
+    //console.time("redirect_get-typed-redirects");
     // divide redirection rules in punctual redirects and regex redirection rules
     typedRedirects = getTypedRedirects(redirects);
-    console.timeEnd("redirect_get-typed-redirects")
-    console.time("redirect_compile-redirects");
+    //console.timeEnd("redirect_get-typed-redirects")
+    //console.time("redirect_compile-redirects");
     typedRedirects = compileRedirects(typedRedirects);
-    console.timeEnd("redirect_compile-redirects")
+    //console.timeEnd("redirect_compile-redirects")
 
   }
   
@@ -154,7 +159,7 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
         }
       }
     }catch(err){
-      console.log(err);
+      //console.log(err);
     }
     return matchingRedirect;
   }
@@ -162,30 +167,30 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
   // redirection only happens server side
   if (process.server || <% print(options.alwaysRedirect) %>) {
     // removing = and trailingSlash, ignore query
-    let path = removeTrailingSlash(to.fullPath.endsWith("=")
-      ? to.fullPath.slice(0, -1)
-      : to.fullPath);
+    let path = removeTrailingSlash(fullPathTo.endsWith("=")
+      ? fullPathTo.slice(0, -1)
+      : fullPathTo);
 
     const query = getQuery(path)
     const urlPath = getUrl(path)
     const queryArray = query ? query.split("&") : [];
 
-    if (to.fullPath !== "/") {  
-      console.time("redirect_check-blacklist");
+    if (fullPathTo !== "/") {  
+      //console.time("redirect_check-blacklist");
       // Checking if path is on blacklist (punctual or regex)  
       if(Object.hasOwn(typedRedirects.punctualDoNotRedirect, urlPath)){
-        return;
+        return null;
       }else if(typedRedirects.regexDoNotRedirect){
         typedRedirects.regexDoNotRedirect.forEach((r) => {
           const regex = new RegExp(r);
           if (regex.test(path)) {
-            return;
+            return null;
           }
         });
       }
-      console.timeEnd("redirect_check-blacklist");
+      //console.timeEnd("redirect_check-blacklist");
 
-      console.time("redirect_punctual-redirect-search");
+      //console.time("redirect_punctual-redirect-search");
       let punctualRedirection : PunctualRedirect | undefined;
       let tentativePunctualRedirections = typedRedirects.punctualRedirects[urlPath] ?? [];
       tentativePunctualRedirections = tentativePunctualRedirections.sort((a,b) => b.query.length - a.query.length);
@@ -195,60 +200,72 @@ export default defineNuxtRouteMiddleware(async (to, _) => {
           break;
         }
       }
-      console.timeEnd("redirect_punctual-redirect-search");
+      //console.timeEnd("redirect_punctual-redirect-search");
 
       if (typeof punctualRedirection !== "undefined") {
         // join request and redirection queries
         const queryParams = [...new Set([
-          ...getQueriesFromPath(to.fullPath),
+          ...getQueriesFromPath(fullPathTo),
           ...punctualRedirection.query
         ])]
         const uri = joinQueriesAndPath(addTrailingSlash(punctualRedirection.to), queryParams) 
-        console.timeEnd("redirect_end-to-end");
-        return navigateTo(uri, {
+        //console.timeEnd("redirect_end-to-end");
+        return {
+          uri,
           redirectCode: punctualRedirection.code,
           external: true,
-        });
+        };
       }
       // punctual redirects had the priority, now we look for any regex redirections
       
-      console.time("redirect_regex-redirect-search");
+      //console.time("redirect_regex-redirect-search");
       let regexRedirection = findRegexRedirect(path, typedRedirects.regexRedirects);
-      console.timeEnd("redirect_regex-redirect-search");
+      //console.timeEnd("redirect_regex-redirect-search");
 
       if(regexRedirection){
         const regex = new RegExp(regexRedirection.from);
         const toPath = addTrailingSlash(urlPath.replace(regex, regexRedirection.to));
         
         const queryParams = [...new Set([
-          ...getQueriesFromPath(to.fullPath),
+          ...getQueriesFromPath(fullPathTo),
           ...getQueriesFromPath(toPath)
         ])]
 
         const uri = joinQueriesAndPath(addTrailingSlash(toPath), queryParams)
-        console.timeEnd("redirect_end-to-end");
-        return navigateTo(uri, {
+        //console.timeEnd("redirect_end-to-end");
+        return {
+          uri, 
           redirectCode: regexRedirection.code,
           external: true,
-        });
+        };
       }
      
       // trailing-slash
       if (<% print(options.trailingSlash) %>) {
-        const originalSplittedPath = to.fullPath.split("?")
+        const originalSplittedPath = fullPathTo.split("?")
         const originalPath = originalSplittedPath[0]
 
         if (!hasTrailingSlash(originalPath)) {
           originalSplittedPath[0] = addTrailingSlash(originalPath)
-          console.timeEnd("redirect_end-to-end");
-          return navigateTo(originalSplittedPath.join("?"), {
+          //console.timeEnd("redirect_end-to-end");
+          return {
+            uri: originalSplittedPath.join("?"),
             redirectCode: 301,
             external: true
-          })
+          }
         }
       }
     }
   }
-  console.timeEnd("redirect_end-to-end");
+}
+
+export default defineNuxtRouteMiddleware(async (to, _) => {
+  const redirectSpecification = await evaluateRedirect(to.fullPath);
+  if(!!redirectSpecification){
+    return navigateTo(redirectSpecification.uri,{
+      redirectCode: redirectSpecification.redirectCode,
+      external: redirectSpecification.external
+    })
+  }
 });
 
