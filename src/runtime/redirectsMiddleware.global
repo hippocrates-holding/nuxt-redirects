@@ -126,6 +126,8 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
     return path.split("?")?.[1] ?? ''
   }
 
+  /*
+
   const findRegexRedirect : (path: string, regexRedirects: RegexRedirects) => RegexRedirect | undefined =  (path: string, regexRedirects: RegexRedirects) => {
     let matchingRedirect : RegexRedirect | undefined;
     try{
@@ -163,6 +165,61 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
     }
     return matchingRedirect;
   }
+
+  */
+
+  const nonRecursiveFindRegexRedirect = (path: string, regexRedirects: RegexRedirects): RegexRedirect | undefined => {
+    const stack: { redirects: RegexRedirects; processRedirects: boolean }[] = [
+        { redirects: regexRedirects, processRedirects: false }
+    ];
+
+    while (stack.length > 0) {
+        const { redirects: currentRedirects, processRedirects } = stack.pop()!;
+        if (!currentRedirects) continue;
+
+        if (processRedirects) {
+            // **Process redirects for the current node after children are evaluated**
+            for (const key in currentRedirects) {
+                const child = currentRedirects[key];
+                if (child?.redirects?.length) {
+                    for (let index = child.redirects.length - 1; index >= 0; index--) {
+                        if (child.redirects[index]?.from_regex?.test(path)) {
+                            return child.redirects[index];
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+
+        for (const key in currentRedirects) {
+            if (key === "root") continue;
+
+            const child = currentRedirects[key];
+            if (!child?.compiled_regex?.test(path)) continue;
+
+            // **Push a reference to this node (for processing redirects later)**
+            stack.push({ redirects: { [key]: child }, processRedirects: true });
+
+            // **Push children for first-pass processing**
+            if (child.children) {
+                stack.push({ redirects: child.children, processRedirects: false });
+            }
+        }
+    }
+
+    // **Fallback: Check root redirects last**
+    const rootRedirects = regexRedirects["root"]?.redirects;
+    if (rootRedirects?.length) {
+        for (let index = rootRedirects.length - 1; index >= 0; index--) {
+            if (rootRedirects[index]?.from_regex?.test(path)) {
+                return rootRedirects[index];
+            }
+        }
+    }
+
+    return undefined;
+  };
 
   // redirection only happens server side
   if (process.server || <% print(options.alwaysRedirect) %>) {
@@ -219,7 +276,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
       // punctual redirects had the priority, now we look for any regex redirections
       
       //console.time("redirect_regex-redirect-search");
-      let regexRedirection = findRegexRedirect(path, typedRedirects.regexRedirects);
+      let regexRedirection = nonRecursiveFindRegexRedirect(path, typedRedirects.regexRedirects);
       //console.timeEnd("redirect_regex-redirect-search");
 
       if(regexRedirection){
