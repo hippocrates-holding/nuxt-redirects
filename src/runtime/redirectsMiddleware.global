@@ -133,14 +133,14 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
     try{
       for(const key of Object.keys(regexRedirects).filter(k => k != 'root')){
         const child = regexRedirects[key];
-        if(child?.compiled_regex?.test(path)) {
+        if(!!path.match(child?.compiled_regex)) {
           if(child?.children && Object.keys(child.children).length > 0){
             matchingRedirect = findRegexRedirect(path, child.children)
           }
           if(!matchingRedirect && child?.redirects?.length > 0){
             for(let index = child.redirects.length - 1; index >= 0; index--){
               const regexRedirect = child.redirects[index];
-              if (regexRedirect?.from_regex?.test(path)) {
+              if (!!path.match(regexRedirect?.from_regex)) {
                 matchingRedirect = regexRedirect;
                 break;
               }
@@ -154,7 +154,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
       if(!matchingRedirect && (regexRedirects["root"]?.redirects?.length ?? 0) > 0){
         for(let index = regexRedirects["root"].redirects.length - 1; index >= 0; index--){
           const regexRedirect = regexRedirects["root"].redirects[index];
-          if (regexRedirect?.from_regex?.test(path)) {
+          if (!!path.match(regexRedirect?.from_regex)) {
             matchingRedirect = regexRedirect;
             break;
           }
@@ -183,7 +183,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
                 const child = currentRedirects[key];
                 if (child?.redirects?.length) {
                     for (let index = child.redirects.length - 1; index >= 0; index--) {
-                        if (child.redirects[index]?.from_regex?.test(path)) {
+                        if (!!path.match(child.redirects[index]?.from_regex)) {
                             return child.redirects[index];
                         }
                     }
@@ -196,7 +196,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
             if (key === "root") continue;
 
             const child = currentRedirects[key];
-            if (!child?.compiled_regex?.test(path)) continue;
+            if (!path.match(child?.compiled_regex)) continue;
 
             // **Push a reference to this node (for processing redirects later)**
             stack.push({ redirects: { [key]: child }, processRedirects: true });
@@ -212,7 +212,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
     const rootRedirects = regexRedirects["root"]?.redirects;
     if (rootRedirects?.length) {
         for (let index = rootRedirects.length - 1; index >= 0; index--) {
-            if (rootRedirects[index]?.from_regex?.test(path)) {
+            if (!!path.match(rootRedirects[index]?.from_regex)) {
                 return rootRedirects[index];
             }
         }
@@ -240,7 +240,7 @@ export const evaluateRedirect : (fullPathTo: string) => Promise<RedirectSpecific
       }else if(typedRedirects.regexDoNotRedirect){
         typedRedirects.regexDoNotRedirect.forEach((r) => {
           const regex = new RegExp(r);
-          if (regex.test(path)) {
+          if (!!path.match(regex)) {
             return null;
           }
         });
